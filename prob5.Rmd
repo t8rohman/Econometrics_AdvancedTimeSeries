@@ -1,0 +1,102 @@
+---
+title: "Problem 5 - Poisson Regression"
+author: "Taufiqur Rohman"
+date: '2022-06-20'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+Use the data in exercise 5 for this exercise. This problem is about solving the count frequency of people smoking cigarettes in a day using Poisson distribution.
+
+The problems are written in below. For now, let's upload and clean the data set to the R environment.
+
+```{r activate library, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(readxl)
+library(dplyr)
+library(broom)
+library(ggpubr)
+library(lmtest)
+library(plm)
+library(mfx)
+library(sqldf)
+```
+
+Let's upload the data set. Looking from the data set, they have 2 data here. The metadata of the data, and the data itself. The metadata are written in the first 10 rows. After that, the data itself is written 3 rows below it. So, I will try to separate both of the data first.
+
+```{r upload data set}
+path <- '~/Documents/RU/Econometrics II/06-HW-Jun/Exercise_5.xls'
+
+df_exec4_meta <- read_excel(path, skip = 2, n_max = 10, col_names = FALSE)
+df_exec4 <- read_excel(path, skip = 13)
+
+head(df_exec4)
+```
+
+As the data looks clean now, we can move on to the analysis.
+
+## Problem 1
+
+The variable cigs is the number of cigarettes smoked per day. How many people in the sample do not smoke at all? What fraction of people claim to smoke 20 cigarettes a day? Why do you think there is a pileup of people at 20 cigarettes?
+
+```{r extracting data using sql}
+smoke_no <- sqldf("
+SELECT
+  COUNT(*) AS not_smoke
+FROM
+  df_exec4
+WHERE
+  cigs == 0")
+
+smoke_twenty <- sqldf("
+SELECT 
+  SUM(CASE WHEN cigs == 20 THEN 1 ELSE 0 END) AS smoke_twenty,
+  ROUND(SUM(CASE WHEN cigs == 20 THEN 1 ELSE 0 END) / CAST(COUNT(*) AS float), 3) AS fraction
+FROM 
+  df_exec4")
+
+smoke_no
+smoke_twenty
+```
+
+The sample contains a total of 807 people. There are 497 people who do not smoke at all. A total of 101 people consume 20 cigarettes every day. This suggests that 12.52 percent of the population smokes 20 cigarettes each day.
+
+It's unsurprising that the highest percentage of smokers consumes 20 cigarettes each day. This is because one package of cigarettes contains 20 cigarettes, and most smokers will smoke a packet of cigarettes in a single day.
+
+
+## Problem 2
+
+Given your answers to part (1), does cigs seem a good candidate for having a conditional Poisson distribution?
+
+```{r histogram}
+cigs <- df_exec4$cigs
+hist(cigs, breaks = 10, main = "Cigarettes frequency distribution")
+```
+
+Given the lack of a smooth distribution of individuals throughout the categories of number of cigarettes smoked per day, as well as the skewing to the left of the histogram, it does not appear to be a good candidate for Normal distribution. As a result, we can proceed with the Poisson distribution.
+
+
+## Problem 3
+
+Estimate a Poisson regression model for cigs, including log(cigpric), log(income), white, educ, age, and age2 as explanatory variables. What are the estimated price and income elasticities?
+
+Let's create the variable in the data frame first.
+
+```{r transforming into log value}
+df_exec4["logcigprc"] <- log(df_exec4$cigpric)
+df_exec4["logincome"] <- log(df_exec4$income)
+```
+
+Now, run the Poisson regression using the GLM package.
+
+```{r poisson regression}
+formula <- cigs ~ logcigprc + logincome + white + educ + age + agesq
+data <- df_exec4
+
+p3_poisson <- glm(formula, data, family = poisson)
+summary(p3_poisson)   
+```
+
+The estimated price elasticity is given by the coefficient of, which is -0.355 and the estimated income elasticity is given by the coefficient of, which is 0.085

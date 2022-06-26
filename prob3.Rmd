@@ -1,0 +1,112 @@
+---
+title: "Problem 3 - OLS, Logit, and Probit Model"
+author: "Taufiqur Rohman"
+date: '2022-06-20'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+Exercise 3 gives data for 2,000 women regarding work (1 = a woman works, 0 = otherwise), age, marital status (1 = married, 0 = otherwise), number of children, and education (number of years of schooling). Out of a total of 2,000 women, 657 were recorded as not being wage earners.
+
+The problems are written in below. For now, let's upload and clean the data set to the R environment.
+
+```{r activate library, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(readxl)
+library(dplyr)
+library(broom)
+library(ggpubr)
+library(lmtest)
+library(plm)
+library(mfx)
+```
+
+Let's upload the data set. Looking from the data set, they skip 2 rows to the column names. So, I separate the column names and the data frame first, and combine it again.
+
+```{r upload data set}
+path <- '~/Documents/RU/Econometrics II/06-HW-Jun/Exercise_3.xls'
+
+cols_exec3 <- as.character(read_excel(path, skip = 2, n_max = 1, col_names = FALSE))
+df_exec3 <- read_excel(path, skip = 3, col_names = cols_exec3)
+
+head(df_exec3)
+```
+
+Looking from the data set, there's no problem in it. All of the data types are correct (dbl). We can move on now to the analysis.
+
+
+## Problem 1
+
+Using these data, estimate the linear probability model (LPM).
+
+```{r ols/lpm regression}
+formula <- work ~ age + married + children + education
+data <- df_exec3
+
+p1_lpm <- lm(formula, data) 
+summary(p1_lpm)
+```
+
+From the result above, the LPM regression will be like this:
+
+$E(work) = -2.073 + 0.010age + 0.111married + 0.115children + 0.019education$
+
+
+## Problem 2
+
+Using the same data, estimate a logit model and obtain the marginal effects of the various variables.
+
+```{r logit model}
+p2_logit <- glm(formula, data, family = binomial(link = "logit"))
+
+summary(p2_logit) # summary of logit regression
+logitmfx(formula, data) # look for the marginal effects
+```
+
+From the result above, the Logit regression will be like this:
+
+$E(work) = -4.159 + 0.058age + 0.742married + 0.764children + 0.098education$
+
+Where the marginal effects is 1. If a woman is one year older, then the probability would be 0.012 higher 2. If a woman is married, then the probability would be 0.155 higher 2. If a woman has one more child, then the probability would be 0.152 higher 3. If a woman has an additional year of schooling, then the probability would be 0.020 higher
+
+In this context, it is the probability that a woman is working or not.
+
+# Problem 3
+
+Repeat (2) for the probit model.
+
+```{r probit model}
+p3_probit <- glm(formula, data, family = binomial(link = "probit"))
+
+summary(p3_probit) # summary of probit regression
+probitmfx(formula, data) # look for the marginal effects
+```
+
+From the result above, the Probit regression will be like this:
+
+***E(work) = -2.467 + 0.035age + 0.431married + 0.447children + 0.058education***
+
+Where the marginal effects is 1. If a woman is one year older, then the probability would be 0.012 higher 2. If a woman is married, then the probability would be 0.150 higher 2. If a woman has one more child, then the probability would be 0.151 higher 3. If a woman has an additional year of schooling, then the probability would be 0.020 higher
+
+In this context, it is the probability that a woman is working or not.
+
+# Problem 4
+
+With proper transformation compare three estimated results, OLS, logit, and probit. Which model would you choose? Why?
+
+```{r measurement for goodness of fit}
+print("R2 for OLS model is") 
+summary(p1_lpm)$r.squared 
+
+print("Pseudo R2 for Logit model is") 
+print(with(summary(p2_logit), 1 - deviance/null.deviance))
+
+print("Pseudo R2 for Probit model is") 
+print(with(summary(p3_probit), 1 - deviance/null.deviance))
+```
+
+For the binary variable prediction, the choice will be between Logit and Probit model. The problem lies in the OLS is that there is possibility that we'll obtain y \< 0 or y \> 1. It doesn't make sense since a probability can't be less than 0 or more than 1. This is a fundamental issue with the LPM that we are unable to resolve.
+
+In GLM model, we use pseudo R-squared as a measurement for goodness of fit. Comparing the value between Logit and Probit model, there's only a slight difference between both of them. But we can choose the Probit model because the pseudo is slightly higher than that of the Logit model. There are also fewer possibilities of it becoming heteroskedastic.

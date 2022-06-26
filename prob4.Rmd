@@ -1,0 +1,203 @@
+---
+title: "Problem 4 - OLS, Logit, Probit, and Tobit Model"
+author: "Taufiqur Rohman"
+date: '2022-06-20'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+The file Exercise 4 contains the 1998 Current Population Survey data in the United States. To estimate the linear probability model for the likelihood of being a union, suppose we specify the following model.
+
+$Union = \beta_0 + \beta_1(Potexp) + \beta_2(Potexp)^2 + \beta_3(Grade) + \beta_4(Married) + \beta_5(High) + e$
+
+where,
+
+-   Potexp (potential experience) = age -- year of schooling -- 5, which for men is often reasonable approximation of the number of years they have been in the labor force.
+-   Grade = number of years of schooling completed.
+-   Married = a dummy that equals 1 if the worker is married and 0 otherwise.
+-   High = a dummy variable that equals 1 if the worker is in a "highly" unionized industry and 0 otherwise.
+
+```{r activate library, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(readxl)
+library(dplyr)
+library(broom)
+library(ggpubr)
+library(lmtest)
+library(plm)
+library(mfx)
+library(VGAM)
+```
+
+Let's upload the data set. There are multiple sheets in this data set. Thus I create a function to read automatically these 2 sheets.
+
+```{r creating function}
+multiplesheets <- function(fname) {
+   
+  # getting info about all excel sheets
+  sheets <- readxl::excel_sheets(fname)
+  tibble <- lapply(sheets, function(x) readxl::read_excel(fname, sheet = x))
+  data_frame <- lapply(tibble, as.data.frame)
+    
+  # assigning names to data frames
+  names(data_frame) <- sheets
+    
+  # print data frame
+  print(data_frame)
+}
+```
+
+After that, I executed the function to the excel file. I hide the code as it will appear in the knitted file. It only specifies the path and then executing the code into the path and save the value to a variable called "tibble".
+
+```{r specifying path name and tibble, include=FALSE}
+# specifying the path name
+path <- '~/Documents/RU/Econometrics II/06-HW-Jun/Exercise_4.xlsx'
+tibble <- multiplesheets(path)
+```
+
+```{r convert to data frame}
+df_prob_1 <- as.data.frame(tibble$Sheet1)
+df_prob_2 <- as.data.frame(tibble$Shhet2)
+```
+
+```{r preview the file}
+head(df_prob_1)
+head(df_prob_2)
+```
+
+The column names in the data set is are not tidy. Let's convert the name to the appropriate format that could be readable by R.
+
+```{r column names}
+colnames(df_prob_1) <- c("potexpsq", "grade", "married", "potexp", "union", "high")
+colnames(df_prob_2) <- c("age", "potexpsq", "grade", "ind", "married", "lwage", "occ", "parttime", "potexp", "union", "weight", "high")
+```
+
+Looking from the data set, there's no problem in it. All of the data types are correct (dbl). We can move on now to the analysis.
+
+## Problem 1 : Sheet 1
+
+Using sheet1,
+
+(1) Describe the model and determine the expected sign of the parameters.
+
+I expected all of the parameters will positively influence the probability of the person being in the union worker, except for the grade. In my intuition, the higher the person getting into higher education, the higher their probability to get more decent jobs and be more individualistic. While in the reality, most of the workers that are involved in the union come from the blue collars worker.
+
+(2) Estimate the linear probability model and evaluate your estimated results.
+
+```{r linear probability model}
+formula <- union ~ potexp + potexpsq + grade + married + high
+data_1 <- df_prob_1
+
+p1_lpm <- lm(formula, data_1) 
+summary(p1_lpm)
+```
+
+$Union = 0.021 + 0.020Potexp - 0.000Potexp^2 - 0.013Grade + 0.013Married + 0.144High$
+
+From this equation, I found that number of year schooling and worker that work in highly unionized industry have a positive correlation to the probability that worker joins a worker union. I also found that marriage is not a good variable to explain the dependent variable.
+
+```{r find focal maxima for potential experience}
+p1coef_intercept <- p1_lpm[["coefficients"]][["(Intercept)"]]
+p1coef_potexp <- p1_lpm[["coefficients"]][["potexp"]]
+p1coef_potexpsq <- p1_lpm[["coefficients"]][["potexpsq"]]
+
+det_1 <- (-p1coef_potexp / (2*p1coef_potexpsq))
+focmaxima_1 <- p1coef_intercept*det_1 + p1coef_potexp*det_1 + p1coef_potexpsq*(det_1^2)
+
+print(focmaxima_1)
+```
+
+For the potential experience, I am trying to interpret it by looking for the focal maxima value of the parabolic curve as the equation is in second degree polynomial. With the assumption that all of other values hold at the same level, the probability of the worker getting in the union will diminish after worker have a more than 3 years' experience.
+
+(3) Try to estimate the logit and probit model. Compare the estimated results with that of the linear probability model.
+
+```{r logit model}
+p1_logit <- glm(formula, data_1, family = binomial(link = "logit"))
+
+summary(p1_logit) # summary of logit regression
+logitmfx(formula, data_1) # look for the marginal effects
+```
+
+```{r probit model}
+p1_probit <- glm(formula, data_1, family = binomial(link = "probit"))
+
+summary(p1_probit) # summary of probit regression
+probitmfx(formula, data_1) # look for the marginal effects
+```
+
+Logit and Probit model produce a similar result with only slight difference in the coefficient (magnitude of each variable). Compared to linear probability model, I found that three of them also produce a similar result, in terms of the sign parameter and the significance of the variable. But they have huge difference in the coefficient and the standard error of the estimate.
+
+## Problem 2: Sheet 2
+
+Using the same data (sheet2) calculate the following linear regression model for log wages (lwage):
+
+$lwage = \beta_0 + \beta_1(Potexp) + \beta_2(Potexp)^2 + \beta_3(Grade) + \beta_4(Married) + \beta_5(High) + e$
+
+(1) Perform OLS for this equation
+
+```{r linear probability model for lwage}
+formula_2 <- lwage ~ potexp + potexpsq + grade + married + high
+data_2 <- df_prob_2
+
+p2_lpm <- lm(formula_2, data_2) 
+summary(p2_lpm)
+```
+
+$lwage = 0.470 + 0.042Potexp - 0.001Potexp^2 + 0.093Grade + 0.094Married + 0.0857High$
+
+From this equation, I found that number of year schooling, marriage status, and worker that work in highly unionized industry have a positive correlation to the probability that worker joins a worker union.
+
+```{r find focal maxima for potential experience 2}
+p2coef_intercept <- p2_lpm[["coefficients"]][["(Intercept)"]]
+p2coef_potexp <- p2_lpm[["coefficients"]][["potexp"]]
+p2coef_potexpsq <- p2_lpm[["coefficients"]][["potexpsq"]]
+
+det_2 <- (-p2coef_potexp / (2*p2coef_potexpsq))
+focmaxima_2 <- p2coef_intercept*det_1 + p2coef_potexp*det_1 + p2coef_potexpsq*(det_1^2)
+
+print(focmaxima_2)
+```
+
+Using similar method that I used in the previous number, the worker will get higher wage until they work for 13 years. After that, the worker will get a lower wage. It seems doesn't make sense, but as the problem states and build the model like that, I will ignore this.
+
+2)  Next, generate a new variable, say clwage such that:
+
+if lwage \>= 1.87, then clwage = lwage, otherwise clwage = 0
+
+```{r DV transformation for clwage}
+df_prob_2["clwage"] = ifelse(df_prob_2$lwage >= 1.87, df_prob_2$lwage, 0)
+```
+
+Now, perform a Tobit on the same model, replacing lwage with clwage. How do your estimates of the relevant coefficients compare?
+
+In R, we can use two-ways. Either using tobit in vglm package by censoring the lower bound to 1.87, or manually transform the Dependent Variable first, and then conducting Tobit regression without defining any lower bound. But the latter way involves redundant steps.
+
+In this case, as I already got the filtered DV, I will conduct the regression with the clwage variable.
+
+```{r tobit model for clwage}
+formula_3 <- clwage ~ potexp + potexpsq + grade + married + high
+
+p2_tobit <- vglm(formula_3, tobit(Lower = 1.87), data = df_prob_2)
+summary(p2_tobit)
+```
+
+Like OLS regression coefficients, Tobit regression coefficients are interpreted in a similar way; however, the linear influence is on the uncensored latent variable rather than the observed outcome.
+
+After censoring value below 1.87, we found that all the variables have similar sign of parameter and are significant at 95% confidence interval although, married and high variables have weaker p-value.
+
+Another thing that we can notice is that there are 2 intercepts in this model. The first intercept is the usual intercept of the tobit model. The second intercept is the log-standard deviation of the latent variable.
+
+```{r find focal maxima for potential experience 3}
+p3coef_intercept <- p2_tobit@coefficients[["(Intercept):1"]]
+p3coef_potexp <- p2_tobit@coefficients[["potexp"]]
+p3coef_potexpsq <- p2_tobit@coefficients[["potexpsq"]]
+
+det_3 <- (-p3coef_potexp / (2*p3coef_potexpsq))
+focmaxima_3 <- p3coef_intercept*det_1 + p3coef_potexp*det_1 + p3coef_potexpsq*(det_1^2)
+
+print(focmaxima_3)
+```
+
+Again, with same the same way, holding all the variables at constant value, I found that the worker will get higher wage until they work for 10 years. After that, the worker will get a lower wage.

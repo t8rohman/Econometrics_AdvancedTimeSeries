@@ -1,0 +1,203 @@
+---
+title: "Problem 2 - Simultaneous Equation Modelling (ILS, 2SLS, and 3SLS)"
+author: "Taufiqur Rohman"
+date: '2022-06-20'
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+The problems are written in below. 
+
+```{r activate library, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(readxl)
+library(dplyr)
+library(broom)
+library(ggpubr)
+library(lmtest)
+library(plm)
+library(Hmisc)
+library(systemfit)
+library(ivreg)
+```
+
+Suppose the following model:
+
+$R_t = \beta_0 + \beta_1M_t + \beta_2Y_t + u_{1t}$
+
+$Y_t = \alpha_0 + \alpha_1R_t + u_{2t}$
+
+Where $M_t$ (money supply) is exogenous, $R_t$ is the interest rate, and
+$Y_t$ is GDP.
+
+For now, let's upload the data set and clean it first. After that, let's take a look at the problem one by one.
+
+```{r upload data set}
+path <- '~/Documents/RU/Econometrics II/06-HW-Jun/Exercise_2.xlsx'
+
+colnames_df_exec2 <- c("year", "gdp_y", "m", "i", "r")
+df_exec2 <- read_excel(path, skip = 1, col_names = colnames_df_exec2)
+
+head(df_exec2)
+```
+
+Looking from the data set, there's no problem in it. All of the data types are correct (dbl). We can move on now to the analysis.
+
+## Problem 1
+
+*1)  How would you justify the model?*
+
+From the first equation, it shows that money supply and GDP level of a country will affect the interest rate. On the other hand, in the second equation, interest rate will also affect the GDP level of the country. An increase in real GDP (i.e., economic growth) will cause an increase in average interest rates in an economy.
+
+*2)  Are the equations identified?*
+
+-   The first equation doesn't have any excluded exogenous variable. But, it includes only one right-hand sided included endogenous variable $Y_t$, *thus k = 0 \< g = 1 (under-identified)*
+-   The second equation has one excluded exogenous variable $M_t$ and only one right hand side included endogenous variable $R_t$, *thus k = 1 = g (just-identified)*
+
+*3)  Using the data given in the table, estimate the parameters of the identified equation(s). Explain which of the method(s) you used in the estimation.*
+
+I will estimate the parameter using 2SLS. 2SLS is one of the most popular methods in solving SEM equation since it can be applied to all identified equations (ILS can only be used to a specific set of equations, particularly where the equation is just-identified) and costs less to compute than 3SLS.
+
+In R, there are 2 famous packages that we can use to estimate the 2SLS. The first and the most preferred by many people is "ivreg" package. Let's try first using this package.
+
+```{r sem using ivreg}
+pr1_ivreg <- ivreg(gdp_y ~ r | m, data = df_exec2)
+# Before vertical line: Defining the second stage regression 
+# After vertical line: Defining the instrumental variable (IV)
+
+summary(pr1_ivreg)
+```
+
+The second one is using systemfit package. Even though not so many people are using this, it is useful for Simultaneous Equation Modelling in general. We can move from OLS, to 2SLS, even 3SLS by changing the hyper parameter "method".
+
+```{r sem using 2sls}
+pr1_D <- r ~ m + gdp_y
+pr1_S <- gdp_y ~ r
+pr1_sys <- list(pr1_D, pr1_S)
+pr1_instr <- ~ m
+
+pr1.sys <- systemfit(formula = pr1_sys, inst = pr1_instr, method = "2SLS", data = df_exec2)
+summary(pr1.sys)
+```
+
+$\hat{Y_t} = 14296.824 - 1244.519R_t$
+
+
+## Problem 2
+
+Suppose we change the model as follows:
+
+$R_t = \beta_0 + \beta_1M_t + \beta_2Y_t + \beta_3Y_{t-1} + u_{1t}$
+
+$Y_t = \alpha_0 + \alpha_1R_t + u_{2t}$
+
+*1)  Find out if the system is identified.*
+
+-   The first equation doesn't have any excluded exogenous variable. But, it includes only one right-hand sided included endogenous variable $Y_t$, *thus k = 0 \< g = 1 (under-identified)*
+-   The second equation has two excluded exogenous variable; $M_t$ and $Y_{t-1}$; and only one right hand side included endogenous variable $R_t$, *thus k = 2 \> g = 1 (over-identified)*
+
+*2)  Using the date given in the table, estimate the parameters of the identified equation(s). Explain which of the method(s) you used in the estimation.*
+
+First, we should create the lagged variable for GDP.
+
+```{r creating lagged variable for gdp}
+df_exec2["gdp_y_lag1"] <- Lag(df_exec2$gdp_y, +1)
+head(df_exec2)
+```
+
+Again, I will use 2SLS for this equation. From now on, I will use the systemfit package to estimate the parameter.
+
+```{r 2sls for problem 2}
+pr2_D <- r ~ m + gdp_y + gdp_y_lag1
+pr2_S <- gdp_y ~ r
+pr2_sys <- list(pr2_D, pr2_S)
+pr2_instr <- ~ m + gdp_y_lag1
+
+pr2.sys <- systemfit(formula = pr2_sys, inst = pr2_instr, method = "2SLS", data = df_exec2)
+summary(pr2.sys)
+```
+
+$\hat{Y_t} = 12878.976 - 1024.400R_t + u_{2t}$
+
+
+## Problem 3
+
+We further change the model as follows:
+
+$R_t = \beta_0 + \beta_1M_t + \beta_2Y_t + u_{1t}$
+
+$Y_t = \alpha_0 + \alpha_1R_t + \alpha_2I_t + u_{2t}$
+
+We treat $I_t$ (domestic investment) and $M_t$ as exogenous.
+
+*1)  Determine the identification of the system.*
+
+-   The first equation has one excluded exogenous variable, $I_t$. Also, it includes one right-hand sided included endogenous variable $Y_t$, *thus k = 1 = g (just-identified)*
+-   The second equation has one excluded exogenous variable, $M_t$ and only one right hand side included endogenous variable $R_t$, *thus k= 1 = g (just-identified)*
+
+All the whole system is identified.
+
+*(2) Using the date given in the table, estimate the parameters of the identified equation(s). Explain which of the method(s) you used in the estimation.*
+
+Again, I will use 2SLS for this equation. I will use the systemfit package to estimate the parameter.
+
+```{r 2sls for problem 3}
+pr3_D <- r ~ m + gdp_y
+pr3_S <- gdp_y ~ r + i
+pr3_sys <- list(pr3_D, pr3_S)
+pr3_instr <- ~ m + i
+
+pr3.sys <- systemfit(formula = pr3_sys, inst = pr3_instr, method = "2SLS", data = df_exec2)
+summary(pr3.sys)
+```
+
+$\hat{R_t} = 8.373 - 0.001M_t + 0.0002Y_t$
+
+$\hat{Y_t} = 4870.763 - 334.607R_t + 3.783I_t$
+
+
+## Problem 4
+
+Again, we change the model as follows:
+
+$R_t = \beta_0 + \beta_1M_t + \beta_2Y_t + u_{1t}$
+
+$Y_t = \alpha_0 + \alpha_1R_t + \alpha_2I_t + u_{2t}$
+
+$I_t = \gamma_0 + \gamma_1R_t + u_{3t}$
+
+*1)  Find out which of the equations are identified.*
+
+-   The first equation has one excluded exogenous variable, $I_t$. Also, it includes one right-hand sided included endogenous variable $Y_t$, *thus k = 1 = g (just-identified)*
+-   The second equation has one excluded exogenous variable, $M_t$ and two one right hand side included endogenous variables; $R_t$ and $I_t$; *thus k = 1 < g = 2 (under-identified)*
+-   The third equation has two excluded exogenous variable; $M_t$ and $Y_t$; and only one right hand side included endogenous variable $R_t$, *thus k = 1 = g (over-identified)*
+
+*2)  Using the date given in the table, estimate the parameters of the identified equation(s) and justify your method(s).*
+
+We can use 2SLS here. But, I will try to solve this model using 3SLS. 3SLS is a combination between 2SLS and SUR (Seemingly Unrelated Regression).
+
+The part where we have endogenous variables both in left-hand and right-hand side of the equation is the 2SLS. After that, we try to account whether the error term of each equation are also correlated. That's where the SUR comes in. 
+
+I found in the 3 previous equations, the error term of each equation's are correlated between each others. As the data is tiny and it won't affect the cost of calculation that much, there's no harm in trying this method.
+
+```{r 3sls for problem 4}
+pr4_D <- r ~ m + gdp_y
+pr4_S <- gdp_y ~ r + i
+pr4_A <- i ~ r
+pr4_sys <- list(pr4_D, pr4_S, pr4_A)
+pr4_instr <- ~ m + i
+
+pr4.sys <- systemfit(formula = pr4_sys, inst = pr4_instr, method = "3SLS", data = df_exec2)
+summary(pr4.sys)
+```
+
+Equation:
+
+$\hat{R_t} = 12.608 + 0.0002M_t - 0.001Y_t$
+
+$\hat{I_t} = 2330.946 - 217.046R_t +$
